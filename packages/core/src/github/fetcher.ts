@@ -11,9 +11,9 @@ const HUMAN_BOTS = new Set<string>([
 ]);
 
 const PR_QUERY = `
-  query RepoPRs($owner: String!, $repo: String!, $cursor: String) {
+  query RepoPRs($owner: String!, $repo: String!, $author: String!, $cursor: String) {
     repository(owner: $owner, name: $repo) {
-      pullRequests(first: 50, after: $cursor, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      pullRequests(first: 50, after: $cursor, filterBy: {createdBy: $author}, orderBy: {field: UPDATED_AT, direction: DESC}) {
         pageInfo { hasNextPage endCursor }
         nodes {
           number
@@ -192,9 +192,12 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
   };
 }
 
+type QueryResult = { repository: { pullRequests: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: GhPR[] } } };
+
 export async function fetchRepoPRs(
   token: string,
   repoConfig: AppConfig["repos"][number],
+  author: string,
 ): Promise<FetchResult> {
   const [owner, repo] = repoConfig.repo.split("/") as [string, string];
   const client = graphql.defaults({ headers: { authorization: `token ${token}` } });
@@ -202,11 +205,10 @@ export async function fetchRepoPRs(
   const prs: PullRequest[] = [];
   let cursor: string | null = null;
   let pages = 0;
-  const MAX_PAGES = 4; // cap at 200 PRs total
+  const MAX_PAGES = 4; // cap at 200 PRs per author
 
-  type QueryResult = { repository: { pullRequests: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: GhPR[] } } };
   do {
-    const data: QueryResult = await client<QueryResult>(PR_QUERY, { owner, repo, cursor });
+    const data: QueryResult = await client<QueryResult>(PR_QUERY, { owner, repo, author, cursor });
     const page = data.repository.pullRequests;
     for (const pr of page.nodes) {
       prs.push(parsePR(pr, repoConfig.repo, repoConfig));
@@ -215,5 +217,15 @@ export async function fetchRepoPRs(
     pages++;
   } while (cursor && pages < MAX_PAGES);
 
-  return { prs, fetchedAt: new Date().toISOString(), repo: repoConfig.repo };
+  return { prs, fetchedAt: new Date().toISOString(), repo: repoConfig.repo, author };
+}
+
+export async function fetchRepoPRsForAuthors(
+  token: string,
+  repoConfig: AppConfig["repos"][number],
+  authors: string[],
+): Promise<FetchResult> {
+  const results = await Promise.all(authors.map((a) => fetchRepoPRs(token, repoConfig, a)));
+  const merged = results.flatMap((r) => r.prs);
+  return { prs: merged, fetchedAt: new Date().toISOString(), repo: repoConfig.repo };
 }

@@ -1,5 +1,7 @@
 import type { AppConfig } from "../types.js";
 
+export const DEFAULT_AUTHORS = ["maximunited", "ugreener", "gamado"] as const;
+
 export const DEFAULT_CONFIG: AppConfig = {
   repos: [
     {

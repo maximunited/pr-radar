@@ -64,4 +64,5 @@ export interface FetchResult {
   prs: PullRequest[];
   fetchedAt: string; // ISO
   repo: string;
+  author?: string; // set when result is scoped to a single author; undefined when merged
 }

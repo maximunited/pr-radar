@@ -10,7 +10,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import type { PullRequest, PrState, FetchResult } from "@/lib/types";
 import { BotBadge } from "./BotBadge";
@@ -65,7 +65,16 @@ const COLUMNS = [
     ),
     size: 110,
   }),
-  col.accessor("repo", { header: "Repo", size: 140 }),
+  col.accessor("repo", {
+    header: "Repo",
+    cell: (i) => {
+      const full = i.getValue();
+      const [org, name] = full.split("/");
+      const short = `${(org ?? "").charAt(0)}/${name ?? ""}`;
+      return <span title={full} className="text-xs text-gray-400">{short}</span>;
+    },
+    size: 90,
+  }),
   col.accessor("number", {
     header: "PR",
     cell: (i) => (
@@ -181,10 +190,13 @@ function applySmartFilter(prs: PullRequest[], filter: SmartFilter): PullRequest[
   return prs;
 }
 
-export function PrTable({ results, onRefresh, refreshing }: {
+export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadingAuthors, onFetchAuthors }: {
   results: FetchResult[];
   onRefresh: () => void;
   refreshing: boolean;
+  fetchedAuthors: Set<string>;
+  loadingAuthors: Set<string>;
+  onFetchAuthors: (authors: string[]) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -193,8 +205,10 @@ export function PrTable({ results, onRefresh, refreshing }: {
   const [repoFilter, setRepoFilter] = useState<string>("all");
   const [authorFilter, setAuthorFilter] = useState<string[]>(DEFAULT_AUTHORS);
   const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
+  const [authorInput, setAuthorInput] = useState("");
   const authorDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (authorDropdownRef.current && !authorDropdownRef.current.contains(e.target as Node)) {
@@ -204,6 +218,21 @@ export function PrTable({ results, onRefresh, refreshing }: {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  // Auto-fetch when filter selects an author whose PRs haven't been loaded yet
+  useEffect(() => {
+    const missing = authorFilter.filter(
+      (a) => !fetchedAuthors.has(a) && !loadingAuthors.has(a),
+    );
+    if (missing.length > 0) onFetchAuthors(missing);
+  }, [authorFilter, fetchedAuthors, loadingAuthors, onFetchAuthors]);
+
+  const addAuthorFromInput = useCallback(() => {
+    const name = authorInput.trim().toLowerCase();
+    if (!name) return;
+    setAuthorFilter((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setAuthorInput("");
+  }, [authorInput]);
 
   const allPrs = useMemo(() => results.flatMap((r) => r.prs), [results]);
   const repos = useMemo(() => Array.from(new Set(allPrs.map((p) => p.repo))), [allPrs]);
@@ -285,22 +314,36 @@ export function PrTable({ results, onRefresh, refreshing }: {
             </span>
           </button>
           {authorDropdownOpen && (
-            <div className="absolute left-0 top-full z-20 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-xl">
+            <div className="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-xl">
+              {/* Text input to add an arbitrary author */}
+              <div className="flex items-center gap-1 border-b border-gray-800 px-2 pb-1">
+                <input
+                  type="text"
+                  value={authorInput}
+                  onChange={(e) => setAuthorInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addAuthorFromInput(); }}
+                  placeholder="Add username…"
+                  className="w-full bg-transparent py-1 text-xs text-gray-300 placeholder-gray-600 outline-none"
+                />
+                <button onClick={addAuthorFromInput} className="text-gray-500 hover:text-gray-300 text-xs">+</button>
+              </div>
               <button
                 onClick={() => setAuthorFilter([])}
                 className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
               >
-                Clear (show all)
+                Show all
               </button>
               <button
-                onClick={() => setAuthorFilter(DEFAULT_AUTHORS)}
+                onClick={() => setAuthorFilter([...DEFAULT_AUTHORS])}
                 className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
               >
                 Reset to defaults
               </button>
               <div className="my-1 border-t border-gray-800" />
-              {allAuthors.map((a) => {
+              {/* All known + selected authors */}
+              {Array.from(new Set([...DEFAULT_AUTHORS, ...allAuthors, ...authorFilter])).sort().map((a) => {
                 const selected = authorFilter.includes(a);
+                const loading = loadingAuthors.has(a);
                 return (
                   <label key={a} className="flex cursor-pointer items-center gap-2 px-3 py-1 hover:bg-gray-800">
                     <input
@@ -313,7 +356,8 @@ export function PrTable({ results, onRefresh, refreshing }: {
                       }
                       className="accent-blue-500"
                     />
-                    <span className={clsx("text-xs", selected ? "text-white" : "text-gray-500")}>{a}</span>
+                    <span className={clsx("text-xs flex-1", selected ? "text-white" : "text-gray-500")}>{a}</span>
+                    {loading && <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />}
                   </label>
                 );
               })}
