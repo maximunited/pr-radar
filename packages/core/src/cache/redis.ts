@@ -6,16 +6,22 @@ const memCache = new Map<string, { value: FetchResult; expiresAt: number }>();
 
 let client: Redis | null = null;
 
+function getRedisUrl(): string | undefined {
+  // Vercel Upstash integration uses KV_REST_API_URL; manual setup uses UPSTASH_REDIS_REST_URL
+  return process.env["KV_REST_API_URL"] ?? process.env["UPSTASH_REDIS_REST_URL"];
+}
+
+function getRedisToken(): string | undefined {
+  return process.env["KV_REST_API_TOKEN"] ?? process.env["UPSTASH_REDIS_REST_TOKEN"];
+}
+
 function isUpstashConfigured(): boolean {
-  return !!(process.env["UPSTASH_REDIS_REST_URL"] && process.env["UPSTASH_REDIS_REST_TOKEN"]);
+  return !!(getRedisUrl() && getRedisToken());
 }
 
 function getClient(): Redis {
   if (!client) {
-    client = new Redis({
-      url: process.env["UPSTASH_REDIS_REST_URL"]!,
-      token: process.env["UPSTASH_REDIS_REST_TOKEN"]!,
-    });
+    client = new Redis({ url: getRedisUrl()!, token: getRedisToken()! });
   }
   return client;
 }
