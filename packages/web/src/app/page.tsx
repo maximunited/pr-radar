@@ -11,6 +11,7 @@ export default function Home() {
   const [results, setResults] = useState<FetchResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [fetchedAuthors, setFetchedAuthors] = useState<Set<string>>(new Set(DEFAULT_AUTHORS));
   const [loadingAuthors, setLoadingAuthors] = useState<Set<string>>(new Set());
 
@@ -21,8 +22,9 @@ export default function Home() {
       const res = await fetch(
         `/api/prs?authors=${DEFAULT_AUTHORS.join(",")}${force ? "&refresh=1" : ""}`,
       );
-      if (res.status === 401) { window.location.href = "/sign-in"; return; }
+      if (res.status === 401) { setNeedsAuth(true); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setNeedsAuth(false);
       setResults(await res.json() as FetchResult[]);
       setFetchedAuthors(new Set(DEFAULT_AUTHORS));
     } catch (e) {
@@ -42,7 +44,6 @@ export default function Home() {
       if (!res.ok) return;
       const incoming = await res.json() as FetchResult[];
       setResults((prev) => {
-        // Merge incoming PRs into existing results by repo
         const map = new Map(prev.map((r) => [r.repo, { ...r, prs: [...r.prs] }]));
         for (const r of incoming) {
           const existing = map.get(r.repo);
@@ -70,6 +71,20 @@ export default function Home() {
     const id = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(id);
   }, [load]);
+
+  if (needsAuth) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-gray-400">
+        <p className="text-sm">No GitHub token available.</p>
+        <a
+          href="/api/auth/signin"
+          className="rounded bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700"
+        >
+          Sign in with GitHub
+        </a>
+      </div>
+    );
+  }
 
   if (error) {
     return (

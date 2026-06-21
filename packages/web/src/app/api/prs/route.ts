@@ -5,26 +5,29 @@ import type { FetchResult } from "@pr-radar/core";
 
 export const runtime = "nodejs";
 
-async function resolveToken(userId: string): Promise<string | undefined> {
+async function resolveToken(): Promise<string | undefined> {
+  // 1. Server env var — works without any user session
   if (process.env["GITHUB_TOKEN"]) return process.env["GITHUB_TOKEN"];
+
+  // 2. Signed-in user's GitHub OAuth token via Clerk
   try {
-    const client = await clerkClient();
-    const { data } = await client.users.getUserOauthAccessToken(userId, "oauth_github");
-    return data[0]?.token;
+    const { userId } = await auth();
+    if (userId) {
+      const client = await clerkClient();
+      const { data } = await client.users.getUserOauthAccessToken(userId, "oauth_github");
+      return data[0]?.token;
+    }
   } catch {
-    return undefined;
+    // no Clerk session or token
   }
+
+  return undefined;
 }
 
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  }
-
-  const token = await resolveToken(userId);
+  const token = await resolveToken();
   if (!token) {
-    return NextResponse.json({ error: "no_github_token" }, { status: 403 });
+    return NextResponse.json({ error: "no_github_token" }, { status: 401 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -34,7 +37,6 @@ export async function GET(req: Request) {
     ? authorsParam.split(",").map((a) => a.trim()).filter(Boolean)
     : [...DEFAULT_AUTHORS];
 
-  // For each (repo × author): serve cache or fetch
   const results = await Promise.all(
     DEFAULT_CONFIG.repos.map(async (repoConfig): Promise<FetchResult> => {
       const perAuthor = await Promise.all(
@@ -49,13 +51,11 @@ export async function GET(req: Request) {
         }),
       );
 
-      // Merge all authors' PRs into one FetchResult per repo
-      const merged: FetchResult = {
+      return {
         prs: perAuthor.flatMap((r) => r.prs),
         fetchedAt: perAuthor[0]?.fetchedAt ?? new Date().toISOString(),
         repo: repoConfig.repo,
       };
-      return merged;
     }),
   );
 
