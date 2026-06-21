@@ -1,14 +1,7 @@
 import { graphql } from "@octokit/graphql";
 import type { AppConfig, CiJob, CiJobStatus, FetchResult, PeerComments, PullRequest, PrState, ReviewerBreakdown } from "../types.js";
 import { matchesAny } from "./patterns.js";
-import { parseCodeRabbit, parseQodo } from "./bots.js";
-import { BOT_USERNAMES } from "../config/default.js";
-
-const HUMAN_BOTS = new Set<string>([
-  BOT_USERNAMES.qodo,
-  BOT_USERNAMES.coderabbit,
-  ...BOT_USERNAMES.ignored,
-]);
+import { parseCodeRabbit, parseQodo, isIgnoredBot } from "./bots.js";
 
 const PR_QUERY = `
   query RepoPRs($searchQuery: String!, $cursor: String) {
@@ -38,6 +31,12 @@ const PR_QUERY = `
                   url
                   detailsUrl
                 }
+                ... on StatusContext {
+                  __typename
+                  context
+                  state
+                  targetUrl
+                }
               }
             }
           }
@@ -45,6 +44,7 @@ const PR_QUERY = `
             nodes {
               author { login }
               state
+              body
             }
           }
           comments(first: 50) {
@@ -84,7 +84,16 @@ interface GhCheckRun {
   detailsUrl: string | null;
 }
 
-interface GhReview { author: { login: string } | null; state: string; }
+interface GhStatusContext {
+  __typename: "StatusContext";
+  context: string;
+  state: string; // SUCCESS | FAILURE | PENDING | ERROR
+  targetUrl: string | null;
+}
+
+type GhContext = GhCheckRun | GhStatusContext;
+
+interface GhReview { author: { login: string } | null; state: string; body: string; }
 interface GhComment { author: { login: string } | null; body: string; }
 interface GhThread { isResolved: boolean; comments: { nodes: Array<{ author: { login: string } | null }> }; }
 interface GhPR {
@@ -99,14 +108,14 @@ interface GhPR {
   commits: { totalCount: number };
   author: { login: string } | null;
   labels: { nodes: Array<{ name: string }> };
-  statusCheckRollup: { contexts: { nodes: GhCheckRun[] } } | null;
+  statusCheckRollup: { contexts: { nodes: GhContext[] } } | null;
   reviews: { nodes: GhReview[] };
   comments: { nodes: GhComment[] };
   reviewThreads: { nodes: GhThread[] };
   reviewRequests: { nodes: Array<{ requestedReviewer: { login?: string; name?: string } | null }> };
 }
 
-function mapGhStatus(status: string, conclusion: string | null): CiJobStatus {
+function mapCheckRunStatus(status: string, conclusion: string | null): CiJobStatus {
   if (status === "IN_PROGRESS" || status === "QUEUED" || status === "WAITING") return "pending";
   switch (conclusion) {
     case "SUCCESS": return "success";
@@ -118,38 +127,54 @@ function mapGhStatus(status: string, conclusion: string | null): CiJobStatus {
   }
 }
 
+function mapStatusContextState(state: string): CiJobStatus {
+  switch (state) {
+    case "SUCCESS": return "success";
+    case "FAILURE":
+    case "ERROR": return "failure";
+    default: return "pending";
+  }
+}
+
+function contextToJob(node: GhContext): { name: string; status: CiJobStatus; url: string | null } {
+  if (node.__typename === "CheckRun") {
+    return { name: node.name, status: mapCheckRunStatus(node.status, node.conclusion), url: node.detailsUrl ?? node.url };
+  }
+  return { name: node.context, status: mapStatusContextState(node.state), url: node.targetUrl };
+}
+
 function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][number]): PullRequest {
   const state: PrState = pr.isDraft ? "draft" : pr.state === "OPEN" ? "open" : "closed";
 
-  // CI jobs from status check rollup
+  // CI jobs from status check rollup (handles both CheckRun and StatusContext)
   const ciJobs: CiJob[] = [];
   let e2eJob: CiJob | null = null;
   for (const node of pr.statusCheckRollup?.contexts.nodes ?? []) {
-    if (node.__typename !== "CheckRun") continue;
-    if (matchesAny(node.name, repoConfig.ciPatterns.ignore)) continue;
-    const job: CiJob = {
-      name: node.name,
-      status: mapGhStatus(node.status, node.conclusion),
-      url: node.detailsUrl ?? node.url,
-    };
-    if (matchesAny(node.name, repoConfig.ciPatterns.e2e)) {
+    const { name, status, url } = contextToJob(node);
+    if (matchesAny(name, repoConfig.ciPatterns.ignore)) continue;
+    const job: CiJob = { name, status, url };
+    if (matchesAny(name, repoConfig.ciPatterns.e2e)) {
       e2eJob ??= job;
     } else {
       ciJobs.push(job);
     }
   }
 
-  // Bot state
+  // Bot detection: issue comments + review bodies (CodeRabbit posts via reviews)
   const allComments = [
     ...pr.comments.nodes.map((c) => ({ body: c.body, user: c.author })),
+    ...pr.reviews.nodes.map((r) => ({ body: r.body, user: r.author })),
     ...pr.reviewThreads.nodes.flatMap((t) =>
       t.comments.nodes.map((c) => ({ body: "", user: c.author }))
     ),
   ];
 
-  // Peer comments: unresolved/total human review threads
+  // Peer comments: unresolved/total human review threads (exclude all known bots)
   const humanThreads = pr.reviewThreads.nodes.filter(
-    (t) => t.comments.nodes[0]?.author && !HUMAN_BOTS.has(t.comments.nodes[0].author!.login),
+    (t) => {
+      const login = t.comments.nodes[0]?.author?.login;
+      return login && !isIgnoredBot(login);
+    },
   );
   const peerComments: PeerComments = {
     unresolved: humanThreads.filter((t) => !t.isResolved).length,
@@ -159,7 +184,7 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
   // Reviewers
   const seenReviewers = new Map<string, string>();
   for (const review of pr.reviews.nodes) {
-    if (!review.author || HUMAN_BOTS.has(review.author.login)) continue;
+    if (!review.author || isIgnoredBot(review.author.login)) continue;
     seenReviewers.set(review.author.login, review.state);
   }
   const reviewerBreakdown: ReviewerBreakdown = { approved: 0, changesRequested: 0, pending: 0 };

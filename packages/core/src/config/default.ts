@@ -22,6 +22,14 @@ export const DEFAULT_CONFIG: AppConfig = {
   cacheTtl: Number(process.env["CACHE_TTL"] ?? 300),
 };
 
+// Pattern-matched so we handle org-specific bot names (e.g. qodo-2-for-medik8s)
+export const BOT_PATTERNS = {
+  qodo: /qodo/i,
+  coderabbit: /coderabbit/i,
+  ignored: /^(github-actions|dependabot|renovate|tide|coderabbit|qodo)\b/i,
+} as const;
+
+// Keep for backward-compat references in bots.ts
 export const BOT_USERNAMES = {
   qodo: "qodo-merge[bot]",
   coderabbit: "coderabbitai[bot]",

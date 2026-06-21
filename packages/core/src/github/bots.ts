@@ -1,13 +1,13 @@
 import type { BotReviewState } from "../types.js";
 import {
-  BOT_USERNAMES,
+  BOT_PATTERNS,
   CODERABBIT_RATE_LIMIT_PATTERNS,
   CODERABBIT_THINKING_PATTERNS,
   QODO_RATE_LIMIT_PATTERNS,
   QODO_THINKING_PATTERNS,
 } from "../config/default.js";
 
-type RawComment = { body: string; user: { login: string } | null };
+export type RawComment = { body: string; user: { login: string } | null };
 
 function classifyBotComment(
   body: string,
@@ -20,19 +20,22 @@ function classifyBotComment(
 }
 
 function countActionItems(body: string): number {
-  // Count unchecked markdown checkboxes: - [ ] or * [ ]
-  const matches = body.match(/^[\s-*]+\[ \]/gm);
-  return matches?.length ?? 0;
+  // Unchecked markdown checkboxes
+  const checkboxes = body.match(/^[\s-*]+\[ \]/gm)?.length ?? 0;
+  // CodeRabbit "Actionable comments posted: N" header
+  const crMatch = body.match(/actionable comments posted:\s*(\d+)/i);
+  const crCount = crMatch ? parseInt(crMatch[1]!, 10) : 0;
+  return checkboxes + crCount;
 }
 
-export function parseBotState(
+function parseBotByPattern(
   comments: RawComment[],
-  botLogin: string,
+  botPattern: RegExp,
   thinkingPatterns: RegExp[],
   rateLimitPatterns: RegExp[],
 ): BotReviewState {
   const botComments = comments
-    .filter((c) => c.user?.login === botLogin)
+    .filter((c) => c.user?.login && botPattern.test(c.user.login))
     .map((c) => c.body);
 
   if (botComments.length === 0) return { state: "missing" };
@@ -47,20 +50,14 @@ export function parseBotState(
   return count > 0 ? { state: "open", count } : { state: "clean" };
 }
 
+export function isIgnoredBot(login: string): boolean {
+  return BOT_PATTERNS.ignored.test(login);
+}
+
 export function parseQodo(comments: RawComment[]): BotReviewState {
-  return parseBotState(
-    comments,
-    BOT_USERNAMES.qodo,
-    QODO_THINKING_PATTERNS,
-    QODO_RATE_LIMIT_PATTERNS,
-  );
+  return parseBotByPattern(comments, BOT_PATTERNS.qodo, QODO_THINKING_PATTERNS, QODO_RATE_LIMIT_PATTERNS);
 }
 
 export function parseCodeRabbit(comments: RawComment[]): BotReviewState {
-  return parseBotState(
-    comments,
-    BOT_USERNAMES.coderabbit,
-    CODERABBIT_THINKING_PATTERNS,
-    CODERABBIT_RATE_LIMIT_PATTERNS,
-  );
+  return parseBotByPattern(comments, BOT_PATTERNS.coderabbit, CODERABBIT_THINKING_PATTERNS, CODERABBIT_RATE_LIMIT_PATTERNS);
 }
