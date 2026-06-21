@@ -10,7 +10,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import type { PullRequest, PrState, FetchResult } from "@/lib/types";
 import { BotBadge } from "./BotBadge";
@@ -25,6 +25,22 @@ const STATE_BADGE: Record<PrState, string> = {
   closed: "bg-purple-900 text-purple-300",
 };
 
+const COLUMN_TIPS: Record<string, string> = {
+  state:        "PR state: open, draft, or closed/merged",
+  author:       "GitHub user who opened the PR",
+  repo:         "Repository (org/repo)",
+  number:       "PR number — click to open on GitHub",
+  title:        "PR title — click to open on GitHub",
+  ciJobs:       "Default CI checks (lint, unit, build, etc). Each dot = one job. Green=pass, red=fail, yellow=pending",
+  e2eJob:       "Periodic pj-rehearse / e2e job. Matched by name pattern (e.g. pj-rehearse*)",
+  qodo:         "Qodo AI review status. Green=clean or rate-limited, red=open action items, spinner=still generating",
+  coderabbit:   "CodeRabbit review status. Same states as Qodo",
+  peerComments: "Human review thread count: unresolved / total (bots excluded)",
+  reviewers:    "Review decisions: ✓=approvals, ✗=changes requested",
+  commits:      "Number of commits in the PR",
+  labels:       "GitHub labels on the PR",
+};
+
 const COLUMNS = [
   col.accessor("state", {
     header: "State",
@@ -34,6 +50,20 @@ const COLUMNS = [
       </span>
     ),
     size: 70,
+  }),
+  col.accessor("author", {
+    header: "Author",
+    cell: (i) => (
+      <a
+        href={`https://github.com/${i.getValue()}`}
+        target="_blank"
+        rel="noreferrer"
+        className="text-gray-300 hover:text-white hover:underline text-xs"
+      >
+        {i.getValue()}
+      </a>
+    ),
+    size: 110,
   }),
   col.accessor("repo", { header: "Repo", size: 140 }),
   col.accessor("number", {
@@ -121,6 +151,8 @@ const COLUMNS = [
   }),
 ];
 
+const DEFAULT_AUTHORS = ["maximunited", "ugreener", "gamado"];
+
 type SmartFilter = "all" | "needs_attention" | "ready_to_merge";
 
 function applySmartFilter(prs: PullRequest[], filter: SmartFilter): PullRequest[] {
@@ -159,17 +191,32 @@ export function PrTable({ results, onRefresh, refreshing }: {
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [stateFilter, setStateFilter] = useState<PrState | "all">("open");
   const [repoFilter, setRepoFilter] = useState<string>("all");
+  const [authorFilter, setAuthorFilter] = useState<string[]>(DEFAULT_AUTHORS);
+  const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
+  const authorDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (authorDropdownRef.current && !authorDropdownRef.current.contains(e.target as Node)) {
+        setAuthorDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const allPrs = useMemo(() => results.flatMap((r) => r.prs), [results]);
   const repos = useMemo(() => Array.from(new Set(allPrs.map((p) => p.repo))), [allPrs]);
+  const allAuthors = useMemo(() => Array.from(new Set(allPrs.map((p) => p.author))).sort(), [allPrs]);
   const lastFetched = results[0]?.fetchedAt;
 
   const filtered = useMemo(() => {
     let prs = allPrs;
     if (stateFilter !== "all") prs = prs.filter((p) => p.state === stateFilter);
     if (repoFilter !== "all") prs = prs.filter((p) => p.repo === repoFilter);
+    if (authorFilter.length > 0) prs = prs.filter((p) => authorFilter.includes(p.author));
     return applySmartFilter(prs, smartFilter);
-  }, [allPrs, stateFilter, repoFilter, smartFilter]);
+  }, [allPrs, stateFilter, repoFilter, authorFilter, smartFilter]);
 
   const table = useReactTable({
     data: filtered,
@@ -226,6 +273,54 @@ export function PrTable({ results, onRefresh, refreshing }: {
           {repos.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
 
+        {/* Author multi-select */}
+        <div className="relative" ref={authorDropdownRef}>
+          <button
+            onClick={() => setAuthorDropdownOpen((o) => !o)}
+            className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+          >
+            Authors
+            <span className="rounded-full bg-blue-700 px-1 text-white">
+              {authorFilter.length === 0 ? "all" : authorFilter.length}
+            </span>
+          </button>
+          {authorDropdownOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-xl">
+              <button
+                onClick={() => setAuthorFilter([])}
+                className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
+              >
+                Clear (show all)
+              </button>
+              <button
+                onClick={() => setAuthorFilter(DEFAULT_AUTHORS)}
+                className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
+              >
+                Reset to defaults
+              </button>
+              <div className="my-1 border-t border-gray-800" />
+              {allAuthors.map((a) => {
+                const selected = authorFilter.includes(a);
+                return (
+                  <label key={a} className="flex cursor-pointer items-center gap-2 px-3 py-1 hover:bg-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        setAuthorFilter((prev) =>
+                          selected ? prev.filter((x) => x !== a) : [...prev, a],
+                        )
+                      }
+                      className="accent-blue-500"
+                    />
+                    <span className={clsx("text-xs", selected ? "text-white" : "text-gray-500")}>{a}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <span className="ml-auto text-xs text-gray-600">
           {filtered.length} PRs
           {lastFetched && ` · fetched ${new Date(lastFetched).toLocaleTimeString()}`}
@@ -254,7 +349,10 @@ export function PrTable({ results, onRefresh, refreshing }: {
                     className="px-3 py-2 text-left text-xs font-medium text-gray-500 select-none"
                     onClick={header.column.getToggleSortingHandler()}
                   >
-                    <span className="flex items-center gap-1">
+                    <span
+                      className="flex items-center gap-1"
+                      title={COLUMN_TIPS[header.column.id]}
+                    >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                       {header.column.getCanSort() && (
                         header.column.getIsSorted() === "asc" ? <ChevronUp size={10} /> :
