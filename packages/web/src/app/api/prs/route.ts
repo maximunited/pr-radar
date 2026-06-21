@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { Octokit } from "@octokit/rest";
 import { getCached, setCached, fetchRepoPRs, DEFAULT_CONFIG } from "@pr-radar/core";
 
 export const runtime = "nodejs";
@@ -30,14 +29,13 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const forceRefresh = searchParams.get("refresh") === "1";
 
-  const octokit = new Octokit({ auth: token });
   const results = await Promise.all(
     DEFAULT_CONFIG.repos.map(async (repoConfig) => {
       if (!forceRefresh) {
         const cached = await getCached(repoConfig.repo);
         if (cached) return cached;
       }
-      const result = await fetchRepoPRs(octokit, repoConfig);
+      const result = await fetchRepoPRs(token, repoConfig);
       await setCached(result, DEFAULT_CONFIG.cacheTtl);
       return result;
     }),
