@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { Octokit } from "@octokit/rest";
 import { getCached, setCached, fetchRepoPRs, DEFAULT_CONFIG } from "@pr-radar/core";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
