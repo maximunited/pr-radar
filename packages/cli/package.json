@@ -1,0 +1,25 @@
+{
+  "name": "@pr-radar/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pr-radar": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.2",
+    "@pr-radar/core": "workspace:*",
+    "cli-table3": "^0.6.5"
+  },
+  "devDependencies": {
+    "@types/cli-table3": "^0.6.4",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.5"
+  }
+}
