@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .next/
+.agents/
+skills-lock.json
 .env
 .env.local
 .env.development.local
