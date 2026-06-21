@@ -1,5 +1,5 @@
 import { graphql } from "@octokit/graphql";
-import type { AppConfig, CiJob, CiJobStatus, FetchResult, PeerComments, PullRequest, PrState, ReviewerBreakdown } from "../types.js";
+import type { AppConfig, CiJob, CiJobStatus, FetchResult, PeerComments, PullRequest, PrState, ReviewerBreakdown, ReviewerDetail } from "../types.js";
 import { matchesAny } from "./patterns.js";
 import { parseCodeRabbit, parseQodo, isIgnoredBot } from "./bots.js";
 
@@ -187,13 +187,23 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
     if (!review.author || isIgnoredBot(review.author.login)) continue;
     seenReviewers.set(review.author.login, review.state);
   }
-  const reviewerBreakdown: ReviewerBreakdown = { approved: 0, changesRequested: 0, pending: 0 };
-  for (const s of seenReviewers.values()) {
-    if (s === "APPROVED") reviewerBreakdown.approved++;
-    else if (s === "CHANGES_REQUESTED") reviewerBreakdown.changesRequested++;
-    else reviewerBreakdown.pending++;
+  // Add requested-but-not-yet-reviewed
+  for (const req of pr.reviewRequests.nodes) {
+    const login = req.requestedReviewer?.login ?? req.requestedReviewer?.name;
+    if (login && !seenReviewers.has(login)) {
+      seenReviewers.set(login, "PENDING");
+    }
   }
-  reviewerBreakdown.pending += pr.reviewRequests.nodes.length;
+  const reviewerBreakdown: ReviewerBreakdown = { approved: 0, changesRequested: 0, pending: 0, details: [] };
+  for (const [login, state] of seenReviewers.entries()) {
+    if (state === "APPROVED") reviewerBreakdown.approved++;
+    else if (state === "CHANGES_REQUESTED") reviewerBreakdown.changesRequested++;
+    else reviewerBreakdown.pending++;
+    reviewerBreakdown.details.push({
+      login,
+      state: state as ReviewerDetail["state"],
+    });
+  }
 
   return {
     id: pr.number,

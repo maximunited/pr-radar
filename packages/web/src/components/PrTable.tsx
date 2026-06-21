@@ -133,9 +133,14 @@ const COLUMNS = [
   col.accessor("reviewers", {
     header: "Reviews",
     cell: (i) => {
-      const { approved, changesRequested } = i.getValue();
+      const { approved, changesRequested, details } = i.getValue();
+      const tooltip = details.map((d) => {
+        const icon = d.state === "APPROVED" ? "✓" : d.state === "CHANGES_REQUESTED" ? "✗" : d.state === "PENDING" ? "⏳" : "○";
+        const label = d.state === "APPROVED" ? "approved" : d.state === "CHANGES_REQUESTED" ? "changes requested" : d.state === "PENDING" ? "pending" : "commented";
+        return `${icon} ${d.login}: ${label}`;
+      }).join("\n");
       return (
-        <span className="flex gap-1 text-xs">
+        <span title={tooltip || undefined} className="flex gap-1 text-xs cursor-default">
           {approved > 0 && <span className="text-green-400">✓{approved}</span>}
           {changesRequested > 0 && <span className="text-red-400">✗{changesRequested}</span>}
           {approved === 0 && changesRequested === 0 && <span className="text-gray-600">—</span>}

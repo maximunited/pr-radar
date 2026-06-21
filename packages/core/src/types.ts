@@ -13,10 +13,16 @@ export interface CiJob {
   url: string | null;
 }
 
+export interface ReviewerDetail {
+  login: string;
+  state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "PENDING";
+}
+
 export interface ReviewerBreakdown {
   approved: number;
   changesRequested: number;
   pending: number;
+  details: ReviewerDetail[];
 }
 
 export interface PeerComments {
