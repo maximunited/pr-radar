@@ -1,7 +1,14 @@
 import { Redis } from "@upstash/redis";
 import type { FetchResult } from "../types.js";
 
+// In-memory fallback for local dev (no Upstash creds)
+const memCache = new Map<string, { value: FetchResult; expiresAt: number }>();
+
 let client: Redis | null = null;
+
+function isUpstashConfigured(): boolean {
+  return !!(process.env["UPSTASH_REDIS_REST_URL"] && process.env["UPSTASH_REDIS_REST_TOKEN"]);
+}
 
 function getClient(): Redis {
   if (!client) {
@@ -18,6 +25,11 @@ function cacheKey(repo: string): string {
 }
 
 export async function getCached(repo: string): Promise<FetchResult | null> {
+  if (!isUpstashConfigured()) {
+    const entry = memCache.get(cacheKey(repo));
+    if (!entry || entry.expiresAt < Date.now()) return null;
+    return entry.value;
+  }
   try {
     const raw = await getClient().get<FetchResult>(cacheKey(repo));
     return raw ?? null;
@@ -27,14 +39,20 @@ export async function getCached(repo: string): Promise<FetchResult | null> {
 }
 
 export async function setCached(result: FetchResult, ttl: number): Promise<void> {
+  if (!isUpstashConfigured()) {
+    memCache.set(cacheKey(result.repo), { value: result, expiresAt: Date.now() + ttl * 1000 });
+    return;
+  }
   try {
     await getClient().set(cacheKey(result.repo), result, { ex: ttl });
   } catch {
-    // cache write failure is non-fatal
+    // non-fatal
   }
 }
 
 export async function invalidate(repo: string): Promise<void> {
+  memCache.delete(cacheKey(repo));
+  if (!isUpstashConfigured()) return;
   try {
     await getClient().del(cacheKey(repo));
   } catch {

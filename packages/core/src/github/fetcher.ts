@@ -67,10 +67,11 @@ export async function fetchRepoPRs(
       }
 
       // Comments (issue + review)
-      const [issueComments, reviewComments, reviews] = await Promise.all([
+      const [issueComments, reviewComments, reviews, commitList] = await Promise.all([
         octokit.paginate(octokit.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 }),
         octokit.paginate(octokit.rest.pulls.listReviewComments, { owner, repo, pull_number: pr.number, per_page: 100 }),
         octokit.paginate(octokit.rest.pulls.listReviews, { owner, repo, pull_number: pr.number, per_page: 100 }),
+        octokit.paginate(octokit.rest.pulls.listCommits, { owner, repo, pull_number: pr.number, per_page: 100 }),
       ]);
 
       const allComments = [
@@ -121,7 +122,7 @@ export async function fetchRepoPRs(
         author: pr.user?.login ?? "unknown",
         state,
         labels: pr.labels.map((l) => (typeof l === "string" ? l : l.name ?? "")),
-        commits: pr.commits ?? 0,
+        commits: commitList.length,
         createdAt: pr.created_at,
         updatedAt: pr.updated_at,
         mergedAt: pr.merged_at ?? null,

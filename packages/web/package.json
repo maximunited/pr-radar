@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@octokit/rest": "^21.0.2",
     "@pr-radar/core": "workspace:*",
     "@upstash/redis": "^1.34.3",
     "next": "^15.0.0",

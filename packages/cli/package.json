@@ -17,7 +17,6 @@
     "cli-table3": "^0.6.5"
   },
   "devDependencies": {
-    "@types/cli-table3": "^0.6.4",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.4.5"
