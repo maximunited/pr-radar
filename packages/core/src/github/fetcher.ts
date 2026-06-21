@@ -11,11 +11,11 @@ const HUMAN_BOTS = new Set<string>([
 ]);
 
 const PR_QUERY = `
-  query RepoPRs($owner: String!, $repo: String!, $author: String!, $cursor: String) {
-    repository(owner: $owner, name: $repo) {
-      pullRequests(first: 50, after: $cursor, filterBy: {createdBy: $author}, orderBy: {field: UPDATED_AT, direction: DESC}) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
+  query RepoPRs($query: String!, $cursor: String) {
+    search(query: $query, type: ISSUE, first: 50, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        ... on PullRequest {
           number
           title
           url
@@ -192,15 +192,15 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
   };
 }
 
-type QueryResult = { repository: { pullRequests: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: GhPR[] } } };
+type QueryResult = { search: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: Array<GhPR | Record<string, never>> } };
 
 export async function fetchRepoPRs(
   token: string,
   repoConfig: AppConfig["repos"][number],
   author: string,
 ): Promise<FetchResult> {
-  const [owner, repo] = repoConfig.repo.split("/") as [string, string];
   const client = graphql.defaults({ headers: { authorization: `token ${token}` } });
+  const searchQuery = `is:pr repo:${repoConfig.repo} author:${author}`;
 
   const prs: PullRequest[] = [];
   let cursor: string | null = null;
@@ -208,10 +208,12 @@ export async function fetchRepoPRs(
   const MAX_PAGES = 4; // cap at 200 PRs per author
 
   do {
-    const data: QueryResult = await client<QueryResult>(PR_QUERY, { owner, repo, author, cursor });
-    const page = data.repository.pullRequests;
-    for (const pr of page.nodes) {
-      prs.push(parsePR(pr, repoConfig.repo, repoConfig));
+    const data: QueryResult = await client<QueryResult>(PR_QUERY, { query: searchQuery, cursor });
+    const page = data.search;
+    for (const node of page.nodes) {
+      // search returns mixed types; skip non-PR nodes
+      if (!("number" in node)) continue;
+      prs.push(parsePR(node as GhPR, repoConfig.repo, repoConfig));
     }
     cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     pages++;
