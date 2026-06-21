@@ -117,19 +117,20 @@ const COLUMNS = [
     enableSorting: false,
     size: 60,
   }),
-  col.accessor("peerComments", {
-    header: "Comments",
-    cell: (i) => {
-      const { unresolved, total } = i.getValue();
-      return (
-        <span className={unresolved > 0 ? "text-yellow-400" : "text-gray-500"}>
-          {unresolved}/{total}
-        </span>
-      );
-    },
-    sortingFn: (a, b) => a.original.peerComments.unresolved - b.original.peerComments.unresolved,
-    size: 80,
-  }),
+  // HIDDEN — uncomment to restore the peer comments column
+  // col.accessor("peerComments", {
+  //   header: "Comments",
+  //   cell: (i) => {
+  //     const { unresolved, total } = i.getValue();
+  //     return (
+  //       <span className={unresolved > 0 ? "text-yellow-400" : "text-gray-500"}>
+  //         {unresolved}/{total}
+  //       </span>
+  //     );
+  //   },
+  //   sortingFn: (a, b) => a.original.peerComments.unresolved - b.original.peerComments.unresolved,
+  //   size: 80,
+  // }),
   col.accessor("reviewers", {
     header: "Reviews",
     cell: (i) => {
