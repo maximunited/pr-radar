@@ -1,13 +1,41 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 .next/
-.agents/
-skills-lock.json
+*.tsbuildinfo
+
+# Env files
 .env
 .env.local
 .env.development.local
 .env.production.local
 .env.test.local
-*.tsbuildinfo
+
+# Vercel
 .vercel/
+
+# Package manager caches
 .npm-cache/
+.pnpm-store/
+
+# Clerk CLI
+.agents/
+skills-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
