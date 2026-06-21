@@ -11,8 +11,8 @@ const HUMAN_BOTS = new Set<string>([
 ]);
 
 const PR_QUERY = `
-  query RepoPRs($query: String!, $cursor: String) {
-    search(query: $query, type: ISSUE, first: 50, after: $cursor) {
+  query RepoPRs($searchQuery: String!, $cursor: String) {
+    search(query: $searchQuery, type: ISSUE, first: 50, after: $cursor) {
       pageInfo { hasNextPage endCursor }
       nodes {
         ... on PullRequest {
@@ -208,7 +208,7 @@ export async function fetchRepoPRs(
   const MAX_PAGES = 4; // cap at 200 PRs per author
 
   do {
-    const data: QueryResult = await client<QueryResult>(PR_QUERY, { query: searchQuery, cursor });
+    const data: QueryResult = await client<QueryResult>(PR_QUERY, { searchQuery, cursor });
     const page = data.search;
     for (const node of page.nodes) {
       // search returns mixed types; skip non-PR nodes
