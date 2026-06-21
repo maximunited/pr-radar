@@ -1,19 +1,30 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { Octokit } from "@octokit/rest";
 import { getCached, setCached, fetchRepoPRs, DEFAULT_CONFIG } from "@pr-radar/core";
-import { authOptions } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  const token =
-    process.env["GITHUB_TOKEN"] ??
-    (session as Record<string, unknown> | null)?.["accessToken"] as string | undefined;
+async function resolveToken(userId: string): Promise<string | undefined> {
+  if (process.env["GITHUB_TOKEN"]) return process.env["GITHUB_TOKEN"];
+  try {
+    const client = await clerkClient();
+    const { data } = await client.users.getUserOauthAccessToken(userId, "oauth_github");
+    return data[0]?.token;
+  } catch {
+    return undefined;
+  }
+}
 
-  if (!token) {
+export async function GET(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  const token = await resolveToken(userId);
+  if (!token) {
+    return NextResponse.json({ error: "no_github_token" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);

@@ -17,7 +17,7 @@ export default function Home() {
     try {
       const res = await fetch(`/api/prs${force ? "?refresh=1" : ""}`);
       if (res.status === 401) {
-        window.location.href = "/api/auth/signin";
+        window.location.href = "/sign-in";
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
