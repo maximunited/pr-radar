@@ -33,7 +33,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 export const BOT_PATTERNS = {
   qodo: /qodo/i,
   coderabbit: /coderabbit/i,
-  ignored: /^(github-actions|dependabot|renovate|tide|coderabbit|qodo)\b/i,
+  ignored: /^(github-actions|dependabot|renovate|tide|coderabbit|qodo|openshift-ci|openshift-merge-bot|k8s-ci-robot|prow-bot|ti-community-bot)\b/i,
 } as const;
 
 // Keep for backward-compat references in bots.ts
