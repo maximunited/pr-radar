@@ -5,6 +5,11 @@ import { PrTable } from "@/components/PrTable";
 import type { FetchResult } from "@/lib/types";
 
 const DEFAULT_AUTHORS = ["maximunited", "ugreener", "gamado"];
+const DEFAULT_REPOS = [
+  "medik8s/system-tests",
+  "openshift/release",
+  "medik8s/storage-based-remediation",
+];
 const POLL_MS = 5 * 60 * 1000;
 
 export default function Home() {
@@ -14,6 +19,8 @@ export default function Home() {
   const [needsAuth, setNeedsAuth] = useState(false);
   const [fetchedAuthors, setFetchedAuthors] = useState<Set<string>>(new Set(DEFAULT_AUTHORS));
   const [loadingAuthors, setLoadingAuthors] = useState<Set<string>>(new Set());
+  const [loadedRepos, setLoadedRepos] = useState<Set<string>>(new Set());
+  const [loadingRepos, setLoadingRepos] = useState<Set<string>>(new Set());
 
   const load = useCallback(async (force = false) => {
     setRefreshing(true);
@@ -27,6 +34,7 @@ export default function Home() {
       setNeedsAuth(false);
       setResults(await res.json() as FetchResult[]);
       setFetchedAuthors(new Set(DEFAULT_AUTHORS));
+      setLoadedRepos(new Set(DEFAULT_REPOS));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -65,6 +73,41 @@ export default function Home() {
       });
     }
   }, [fetchedAuthors]);
+
+  const loadForRepos = useCallback(async (newRepos: string[]) => {
+    const toFetch = newRepos.filter((r) => !loadedRepos.has(r) && !loadingRepos.has(r));
+    if (toFetch.length === 0) return;
+
+    setLoadingRepos((prev) => new Set([...prev, ...toFetch]));
+    try {
+      const authors = Array.from(fetchedAuthors);
+      const res = await fetch(
+        `/api/prs?authors=${authors.join(",")}&repos=${toFetch.join(",")}`,
+      );
+      if (!res.ok) return;
+      const incoming = await res.json() as FetchResult[];
+      setResults((prev) => {
+        const map = new Map(prev.map((r) => [r.repo, { ...r, prs: [...r.prs] }]));
+        for (const r of incoming) {
+          const existing = map.get(r.repo);
+          if (existing) {
+            const knownIds = new Set(existing.prs.map((p) => p.number));
+            existing.prs.push(...r.prs.filter((p) => !knownIds.has(p.number)));
+          } else {
+            map.set(r.repo, r);
+          }
+        }
+        return Array.from(map.values());
+      });
+      setLoadedRepos((prev) => new Set([...prev, ...toFetch]));
+    } finally {
+      setLoadingRepos((prev) => {
+        const next = new Set(prev);
+        toFetch.forEach((r) => next.delete(r));
+        return next;
+      });
+    }
+  }, [loadedRepos, loadingRepos, fetchedAuthors]);
 
   useEffect(() => {
     void load();
@@ -106,6 +149,9 @@ export default function Home() {
       fetchedAuthors={fetchedAuthors}
       loadingAuthors={loadingAuthors}
       onFetchAuthors={loadForAuthors}
+      loadedRepos={loadedRepos}
+      loadingRepos={loadingRepos}
+      onFetchRepos={loadForRepos}
     />
   );
 }

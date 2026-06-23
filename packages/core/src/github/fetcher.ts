@@ -51,6 +51,7 @@ const PR_QUERY = `
             nodes {
               author { login }
               body
+              createdAt
             }
           }
           reviewThreads(first: 50) {
@@ -93,8 +94,11 @@ interface GhStatusContext {
 
 type GhContext = GhCheckRun | GhStatusContext;
 
+// Comments whose entire body is a CI/slash command (e.g. /test, /lgtm, /approve, /hold)
+const COMMAND_RE = /^\s*\/[a-z][\w-]/i;
+
 interface GhReview { author: { login: string } | null; state: string; body: string; }
-interface GhComment { author: { login: string } | null; body: string; }
+interface GhComment { author: { login: string } | null; body: string; createdAt: string; }
 interface GhThread { isResolved: boolean; comments: { nodes: Array<{ author: { login: string } | null }> }; }
 interface GhPR {
   number: number;
@@ -176,16 +180,32 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
       return login && !isIgnoredBot(login);
     },
   );
+  // Unreplied regular (non-inline) comments: meaningful human comments since the author last replied
+  const prAuthorLogin = pr.author?.login ?? "";
+  const humanIssueComments = pr.comments.nodes
+    .filter((c) => c.author?.login && !isIgnoredBot(c.author.login))
+    .map((c) => ({ login: c.author!.login, body: c.body, ts: new Date(c.createdAt).getTime() }));
+  const authorComments = humanIssueComments.filter((c) => c.login === prAuthorLogin);
+  const lastAuthorTs = authorComments.length > 0 ? Math.max(...authorComments.map((c) => c.ts)) : 0;
+  const unrepliedComments = humanIssueComments.filter(
+    (c) => c.login !== prAuthorLogin && !COMMAND_RE.test(c.body) && c.ts > lastAuthorTs,
+  ).length;
+
   const peerComments: PeerComments = {
     unresolved: humanThreads.filter((t) => !t.isResolved).length,
     total: humanThreads.length,
+    unrepliedComments,
   };
 
-  // Reviewers
+  // Reviewers — COMMENTED doesn't clear a prior APPROVED/CHANGES_REQUESTED
   const seenReviewers = new Map<string, string>();
   for (const review of pr.reviews.nodes) {
     if (!review.author || isIgnoredBot(review.author.login)) continue;
-    seenReviewers.set(review.author.login, review.state);
+    const prev = seenReviewers.get(review.author.login);
+    const isDecisive = review.state === "APPROVED" || review.state === "CHANGES_REQUESTED";
+    if (isDecisive || !prev) {
+      seenReviewers.set(review.author.login, review.state);
+    }
   }
   // Add requested-but-not-yet-reviewed
   for (const req of pr.reviewRequests.nodes) {

@@ -19,6 +19,28 @@ import clsx from "clsx";
 
 const col = createColumnHelper<PullRequest>();
 
+const ALL_DEFAULT_REPOS = [
+  "medik8s/system-tests",
+  "openshift/release",
+  "medik8s/storage-based-remediation",
+];
+// sbr deselected by default — user must opt in
+const DEFAULT_REPO_FILTER = ALL_DEFAULT_REPOS.filter(
+  (r) => r !== "medik8s/storage-based-remediation",
+);
+
+function abbreviateRepo(full: string): string {
+  const [org, name] = full.split("/");
+  const orgAbbr = (org ?? "").charAt(0);
+  const repoName = name ?? "";
+  // For long hyphen-separated names, collapse to initials (e.g. storage-based-remediation → sbr)
+  const nameDisplay =
+    repoName.length > 12
+      ? repoName.split("-").map((w) => w.charAt(0)).join("")
+      : repoName;
+  return `${orgAbbr}/${nameDisplay}`;
+}
+
 const STATE_BADGE: Record<PrState, string> = {
   open: "bg-green-700 text-green-200",
   draft: "bg-gray-700 text-gray-300",
@@ -35,7 +57,7 @@ const COLUMN_TIPS: Record<string, string> = {
   e2eJob:       "Periodic pj-rehearse / e2e job. Matched by name pattern (e.g. pj-rehearse*)",
   qodo:         "Qodo AI review status. Green=clean or rate-limited, red=open action items, spinner=still generating",
   coderabbit:   "CodeRabbit review status. Same states as Qodo",
-  peerComments: "Human review thread count: unresolved / total (bots excluded)",
+  peerComments: "Human comments: N💬 = unreplied regular comments (no /commands), N/N = unresolved/total inline review threads. Bots excluded.",
   reviewers:    "Review decisions: ✓=approvals, ✗=changes requested",
   commits:      "Number of commits in the PR",
   labels:       "GitHub labels on the PR",
@@ -69,9 +91,17 @@ const COLUMNS = [
     header: "Repo",
     cell: (i) => {
       const full = i.getValue();
-      const [org, name] = full.split("/");
-      const short = `${(org ?? "").charAt(0)}/${name ?? ""}`;
-      return <span title={full} className="text-xs text-gray-400">{short}</span>;
+      return (
+        <a
+          href={`https://github.com/${full}`}
+          target="_blank"
+          rel="noreferrer"
+          title={full}
+          className="text-xs text-gray-400 hover:text-gray-200 hover:underline"
+        >
+          {abbreviateRepo(full)}
+        </a>
+      );
     },
     size: 90,
   }),
@@ -117,20 +147,36 @@ const COLUMNS = [
     enableSorting: false,
     size: 60,
   }),
-  // HIDDEN — uncomment to restore the peer comments column
-  // col.accessor("peerComments", {
-  //   header: "Comments",
-  //   cell: (i) => {
-  //     const { unresolved, total } = i.getValue();
-  //     return (
-  //       <span className={unresolved > 0 ? "text-yellow-400" : "text-gray-500"}>
-  //         {unresolved}/{total}
-  //       </span>
-  //     );
-  //   },
-  //   sortingFn: (a, b) => a.original.peerComments.unresolved - b.original.peerComments.unresolved,
-  //   size: 80,
-  // }),
+  col.accessor("peerComments", {
+    header: "Comments",
+    cell: (i) => {
+      const { unresolved, total, unrepliedComments } = i.getValue();
+      const hasAny = unresolved > 0 || unrepliedComments > 0;
+      const parts: string[] = [];
+      if (unrepliedComments > 0) parts.push(`${unrepliedComments} unreplied`);
+      if (total > 0) parts.push(`${unresolved}/${total} inline unresolved`);
+      return (
+        <span
+          title={parts.length > 0 ? parts.join(", ") : "No open comments"}
+          className={hasAny ? "text-yellow-400" : "text-gray-500"}
+        >
+          {unrepliedComments > 0 && <span>{unrepliedComments}💬</span>}
+          {total > 0 && (
+            <span className={unrepliedComments > 0 ? "ml-1" : ""}>
+              {unresolved}/{total}
+            </span>
+          )}
+          {!hasAny && total === 0 && <span>—</span>}
+        </span>
+      );
+    },
+    sortingFn: (a, b) => {
+      const aScore = a.original.peerComments.unrepliedComments + a.original.peerComments.unresolved;
+      const bScore = b.original.peerComments.unrepliedComments + b.original.peerComments.unresolved;
+      return aScore - bScore;
+    },
+    size: 90,
+  }),
   col.accessor("reviewers", {
     header: "Reviews",
     cell: (i) => {
@@ -178,7 +224,8 @@ function applySmartFilter(prs: PullRequest[], filter: SmartFilter): PullRequest[
         pr.e2eJob?.status === "failure" ||
         (pr.qodo.state === "open") ||
         (pr.coderabbit.state === "open") ||
-        pr.peerComments.unresolved > 0,
+        pr.peerComments.unresolved > 0 ||
+        pr.peerComments.unrepliedComments > 0,
     );
   }
   if (filter === "ready_to_merge") {
@@ -189,6 +236,7 @@ function applySmartFilter(prs: PullRequest[], filter: SmartFilter): PullRequest[
         pr.qodo.state !== "open" &&
         pr.coderabbit.state !== "open" &&
         pr.peerComments.unresolved === 0 &&
+        pr.peerComments.unrepliedComments === 0 &&
         pr.reviewers.approved >= 1 &&
         pr.reviewers.changesRequested === 0,
     );
@@ -196,29 +244,38 @@ function applySmartFilter(prs: PullRequest[], filter: SmartFilter): PullRequest[
   return prs;
 }
 
-export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadingAuthors, onFetchAuthors }: {
+export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadingAuthors, onFetchAuthors, loadedRepos, loadingRepos, onFetchRepos }: {
   results: FetchResult[];
   onRefresh: () => void;
   refreshing: boolean;
   fetchedAuthors: Set<string>;
   loadingAuthors: Set<string>;
   onFetchAuthors: (authors: string[]) => void;
+  loadedRepos: Set<string>;
+  loadingRepos: Set<string>;
+  onFetchRepos: (repos: string[]) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [stateFilter, setStateFilter] = useState<PrState | "all">("open");
-  const [repoFilter, setRepoFilter] = useState<string>("all");
+  const [repoFilter, setRepoFilter] = useState<string[]>(DEFAULT_REPO_FILTER);
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
+  const [repoInput, setRepoInput] = useState("");
+  const repoDropdownRef = useRef<HTMLDivElement>(null);
   const [authorFilter, setAuthorFilter] = useState<string[]>(DEFAULT_AUTHORS);
   const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
   const [authorInput, setAuthorInput] = useState("");
   const authorDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (authorDropdownRef.current && !authorDropdownRef.current.contains(e.target as Node)) {
         setAuthorDropdownOpen(false);
+      }
+      if (repoDropdownRef.current && !repoDropdownRef.current.contains(e.target as Node)) {
+        setRepoDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -232,6 +289,21 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
     );
     if (missing.length > 0) onFetchAuthors(missing);
   }, [authorFilter, fetchedAuthors, loadingAuthors, onFetchAuthors]);
+
+  // Auto-fetch when filter selects a custom repo not yet loaded
+  useEffect(() => {
+    const missing = repoFilter.filter(
+      (r) => !loadedRepos.has(r) && !loadingRepos.has(r),
+    );
+    if (missing.length > 0) onFetchRepos(missing);
+  }, [repoFilter, loadedRepos, loadingRepos, onFetchRepos]);
+
+  const addRepoFromInput = useCallback(() => {
+    const repo = repoInput.trim();
+    if (!repo || !repo.includes("/")) return;
+    setRepoFilter((prev) => (prev.includes(repo) ? prev : [...prev, repo]));
+    setRepoInput("");
+  }, [repoInput]);
 
   const addAuthorFromInput = useCallback(() => {
     const name = authorInput.trim().toLowerCase();
@@ -248,7 +320,7 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
   const filtered = useMemo(() => {
     let prs = allPrs;
     if (stateFilter !== "all") prs = prs.filter((p) => p.state === stateFilter);
-    if (repoFilter !== "all") prs = prs.filter((p) => p.repo === repoFilter);
+    if (repoFilter.length > 0) prs = prs.filter((p) => repoFilter.includes(p.repo));
     if (authorFilter.length > 0) prs = prs.filter((p) => authorFilter.includes(p.author));
     return applySmartFilter(prs, smartFilter);
   }, [allPrs, stateFilter, repoFilter, authorFilter, smartFilter]);
@@ -298,15 +370,68 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
           <option value="closed">Closed</option>
         </select>
 
-        {/* Repo filter */}
-        <select
-          value={repoFilter}
-          onChange={(e) => setRepoFilter(e.target.value)}
-          className="rounded bg-gray-800 px-2 py-1 text-xs text-gray-300"
-        >
-          <option value="all">All repos</option>
-          {repos.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+        {/* Repo multi-select */}
+        <div className="relative" ref={repoDropdownRef}>
+          <button
+            onClick={() => setRepoDropdownOpen((o) => !o)}
+            className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+          >
+            Repos
+            <span className="rounded-full bg-blue-700 px-1 text-white">
+              {repoFilter.length === 0 ? "all" : repoFilter.length}
+            </span>
+          </button>
+          {repoDropdownOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-xl">
+              <div className="flex items-center gap-1 border-b border-gray-800 px-2 pb-1">
+                <input
+                  type="text"
+                  value={repoInput}
+                  onChange={(e) => setRepoInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addRepoFromInput(); }}
+                  placeholder="Add org/repo…"
+                  className="w-full bg-transparent py-1 text-xs text-gray-300 placeholder-gray-600 outline-none"
+                />
+                <button onClick={addRepoFromInput} className="text-gray-500 hover:text-gray-300 text-xs">+</button>
+              </div>
+              <button
+                onClick={() => setRepoFilter([])}
+                className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
+              >
+                Show all
+              </button>
+              <button
+                onClick={() => setRepoFilter([...DEFAULT_REPO_FILTER])}
+                className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
+              >
+                Reset to defaults
+              </button>
+              <div className="my-1 border-t border-gray-800" />
+              {Array.from(new Set([...ALL_DEFAULT_REPOS, ...repos, ...repoFilter])).sort().map((r) => {
+                const selected = repoFilter.includes(r);
+                const loading = loadingRepos.has(r);
+                return (
+                  <label key={r} className="flex cursor-pointer items-center gap-2 px-3 py-1 hover:bg-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        setRepoFilter((prev) =>
+                          selected ? prev.filter((x) => x !== r) : [...prev, r],
+                        )
+                      }
+                      className="accent-blue-500"
+                    />
+                    <span className={clsx("text-xs flex-1", selected ? "text-white" : "text-gray-500")} title={r}>
+                      {abbreviateRepo(r)}
+                    </span>
+                    {loading && <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Author multi-select */}
         <div className="relative" ref={authorDropdownRef}>

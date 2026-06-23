@@ -18,6 +18,13 @@ export const DEFAULT_CONFIG: AppConfig = {
         ignore: [],
       },
     },
+    {
+      repo: "medik8s/storage-based-remediation",
+      ciPatterns: {
+        e2e: ["pj-rehearse*", "*e2e*"],
+        ignore: [],
+      },
+    },
   ],
   cacheTtl: Number(process.env["CACHE_TTL"] ?? 300),
 };

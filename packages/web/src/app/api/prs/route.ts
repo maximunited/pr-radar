@@ -37,8 +37,20 @@ export async function GET(req: Request) {
     ? authorsParam.split(",").map((a) => a.trim()).filter(Boolean)
     : [...DEFAULT_AUTHORS];
 
+  const reposParam = searchParams.get("repos");
+  const customRepos: string[] = reposParam
+    ? reposParam.split(",").map((r) => r.trim()).filter(Boolean)
+    : [];
+
+  // When repos param is provided, fetch only those (custom repos not in DEFAULT_CONFIG).
+  // Otherwise fetch all configured repos.
+  const defaultCiPatterns = { e2e: ["pj-rehearse*", "*e2e*"], ignore: [] as string[] };
+  const repoConfigs = customRepos.length > 0
+    ? customRepos.map((repo) => ({ repo, ciPatterns: defaultCiPatterns }))
+    : DEFAULT_CONFIG.repos;
+
   const results = await Promise.all(
-    DEFAULT_CONFIG.repos.map(async (repoConfig): Promise<FetchResult> => {
+    repoConfigs.map(async (repoConfig): Promise<FetchResult> => {
       const perAuthor = await Promise.all(
         authors.map(async (author) => {
           if (!forceRefresh) {

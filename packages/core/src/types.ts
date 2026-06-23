@@ -28,6 +28,7 @@ export interface ReviewerBreakdown {
 export interface PeerComments {
   unresolved: number;
   total: number;
+  unrepliedComments: number; // meaningful non-inline comments not yet replied to by PR author
 }
 
 export type PrState = "open" | "closed" | "draft";
