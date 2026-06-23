@@ -163,7 +163,7 @@ const COLUMNS = [
           {unrepliedComments > 0 && <span>{unrepliedComments}💬</span>}
           {total > 0 && (
             <span className={unrepliedComments > 0 ? "ml-1" : ""}>
-              {unresolved}/{total}
+              {unresolved > 0 ? `${unresolved}/${total}` : "0"}
             </span>
           )}
           {!hasAny && total === 0 && <span>—</span>}
