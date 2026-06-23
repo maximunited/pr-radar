@@ -29,6 +29,21 @@ const DEFAULT_REPO_FILTER = ALL_DEFAULT_REPOS.filter(
   (r) => r !== "medik8s/storage-based-remediation",
 );
 
+function labelClasses(label: string): string {
+  const l = label.toLowerCase();
+  // Green: approval / positive signals
+  if (/^(lgtm|approved|cherry-pick-approved|ok-to-test)$/.test(l))
+    return "bg-green-900/70 text-green-300";
+  // Red: hard blockers
+  if (/^(hold|do-not-merge|needs-rebase|wip)$/.test(l) || /^do-not-merge\//.test(l))
+    return "bg-red-900/70 text-red-300";
+  // Blue: size tiers and CI-gate labels
+  if (/^size\//.test(l) || /^(needs-ok-to-test|needs-priority|needs-kind)$/.test(l))
+    return "bg-blue-900/70 text-blue-300";
+  // Default: purple for area, kind, priority, and anything else
+  return "bg-purple-900/70 text-purple-300";
+}
+
 function abbreviateRepo(full: string): string {
   const [org, name] = full.split("/");
   const orgAbbr = (org ?? "").charAt(0);
@@ -203,7 +218,7 @@ const COLUMNS = [
     cell: (i) => (
       <span className="flex flex-wrap gap-0.5">
         {i.getValue().map((l) => (
-          <span key={l} className="rounded bg-gray-800 px-1 text-xs text-gray-400">{l}</span>
+          <span key={l} className={clsx("rounded px-1 text-xs", labelClasses(l))}>{l}</span>
         ))}
       </span>
     ),
