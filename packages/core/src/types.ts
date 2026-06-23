@@ -42,6 +42,7 @@ export interface PullRequest {
   author: string;
   state: PrState;
   labels: string[];
+  removedLabels: string[]; // labels applied then removed (e.g. lgtm stripped on rebase)
   commits: number;
   createdAt: string;
   updatedAt: string;

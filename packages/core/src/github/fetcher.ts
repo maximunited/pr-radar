@@ -64,6 +64,12 @@ const PR_QUERY = `
               }
             }
           }
+          timelineItems(first: 100, itemTypes: [LABELED_EVENT, UNLABELED_EVENT]) {
+            nodes {
+              ... on LabeledEvent   { __typename label { name } }
+              ... on UnlabeledEvent { __typename label { name } }
+            }
+          }
           reviewRequests(first: 10) {
             nodes {
               requestedReviewer {
@@ -99,6 +105,7 @@ type GhContext = GhCheckRun | GhStatusContext;
 // Comments whose entire body is a CI/slash command (e.g. /test, /lgtm, /approve, /hold)
 const COMMAND_RE = /^\s*\/[a-z][\w-]/i;
 
+interface GhLabelEvent { __typename: "LabeledEvent" | "UnlabeledEvent"; label: { name: string }; }
 interface GhReview { author: { login: string } | null; state: string; body: string; }
 interface GhComment { author: { login: string } | null; body: string; createdAt: string; }
 interface GhThread { isResolved: boolean; isOutdated: boolean; comments: { nodes: Array<{ author: { login: string } | null }> }; }
@@ -118,6 +125,7 @@ interface GhPR {
   reviews: { nodes: GhReview[] };
   comments: { nodes: GhComment[] };
   reviewThreads: { nodes: GhThread[] };
+  timelineItems: { nodes: Array<GhLabelEvent | Record<string, never>> };
   reviewRequests: { nodes: Array<{ requestedReviewer: { login?: string; name?: string } | null }> };
 }
 
@@ -226,6 +234,18 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
     });
   }
 
+  // Replay label events to find labels that were applied then removed (e.g. lgtm stripped on rebase)
+  const currentLabels = new Set(pr.labels.nodes.map((l) => l.name));
+  const labelHistory = new Map<string, "added" | "removed">();
+  for (const item of pr.timelineItems.nodes) {
+    if (!("__typename" in item)) continue;
+    const ev = item as GhLabelEvent;
+    labelHistory.set(ev.label.name, ev.__typename === "LabeledEvent" ? "added" : "removed");
+  }
+  const removedLabels = Array.from(labelHistory.entries())
+    .filter(([name, state]) => state === "removed" && !currentLabels.has(name))
+    .map(([name]) => name);
+
   return {
     id: pr.number,
     number: pr.number,
@@ -235,6 +255,7 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
     author: pr.author?.login ?? "unknown",
     state,
     labels: pr.labels.nodes.map((l) => l.name),
+    removedLabels,
     commits: pr.commits.totalCount,
     createdAt: pr.createdAt,
     updatedAt: pr.updatedAt,

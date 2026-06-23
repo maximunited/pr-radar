@@ -29,6 +29,18 @@ const DEFAULT_REPO_FILTER = ALL_DEFAULT_REPOS.filter(
   (r) => r !== "medik8s/storage-based-remediation",
 );
 
+// Returns the border/text color for a removed label (outline only, grey text, strikethrough)
+function removedLabelClasses(label: string): string {
+  const l = label.toLowerCase();
+  if (/^(lgtm|approved|cherry-pick-approved|ok-to-test)$/.test(l))
+    return "border border-green-600 text-gray-500";
+  if (/^(hold|do-not-merge|needs-rebase|wip)$/.test(l) || /^do-not-merge\//.test(l))
+    return "border border-red-600 text-gray-500";
+  if (/^size\//.test(l) || /^(needs-ok-to-test|needs-priority|needs-kind)$/.test(l))
+    return "border border-blue-600 text-gray-500";
+  return "border border-purple-600 text-gray-500";
+}
+
 function labelClasses(label: string): string {
   const l = label.toLowerCase();
   // Green: approval / positive signals
@@ -215,13 +227,20 @@ const COLUMNS = [
   col.accessor("commits", { header: "Commits", size: 70 }),
   col.accessor("labels", {
     header: "Labels",
-    cell: (i) => (
-      <span className="flex flex-wrap gap-0.5">
-        {i.getValue().map((l) => (
-          <span key={l} className={clsx("rounded px-1 text-xs", labelClasses(l))}>{l}</span>
-        ))}
-      </span>
-    ),
+    cell: (i) => {
+      const active = i.getValue();
+      const removed = i.row.original.removedLabels;
+      return (
+        <span className="flex flex-wrap gap-0.5">
+          {active.map((l) => (
+            <span key={l} className={clsx("rounded px-1 text-xs", labelClasses(l))}>{l}</span>
+          ))}
+          {removed.map((l) => (
+            <span key={`rm-${l}`} title="Label was removed" className={clsx("rounded px-1 text-xs line-through", removedLabelClasses(l))}>{l}</span>
+          ))}
+        </span>
+      );
+    },
     enableSorting: false,
     size: 150,
   }),
