@@ -58,6 +58,7 @@ const PR_QUERY = `
           reviewThreads(first: 50) {
             nodes {
               isResolved
+              isOutdated
               comments(first: 1) {
                 nodes { author { login } }
               }
@@ -100,7 +101,7 @@ const COMMAND_RE = /^\s*\/[a-z][\w-]/i;
 
 interface GhReview { author: { login: string } | null; state: string; body: string; }
 interface GhComment { author: { login: string } | null; body: string; createdAt: string; }
-interface GhThread { isResolved: boolean; comments: { nodes: Array<{ author: { login: string } | null }> }; }
+interface GhThread { isResolved: boolean; isOutdated: boolean; comments: { nodes: Array<{ author: { login: string } | null }> }; }
 interface GhPR {
   number: number;
   title: string;
@@ -175,12 +176,11 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
   ];
 
   // Peer comments: unresolved/total human review threads (exclude all known bots)
-  const humanThreads = pr.reviewThreads.nodes.filter(
-    (t) => {
-      const login = t.comments.nodes[0]?.author?.login;
-      return login && !isIgnoredBot(login);
-    },
-  );
+  const humanThreads = pr.reviewThreads.nodes.filter((t) => {
+    if (t.isOutdated) return false;
+    const login = t.comments.nodes[0]?.author?.login;
+    return login && !isIgnoredBot(login);
+  });
   // Unreplied regular (non-inline) comments: meaningful human comments since the author last replied
   const prAuthorLogin = pr.author?.login ?? "";
   const humanIssueComments = pr.comments.nodes
@@ -248,8 +248,9 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
       const base = parseCodeRabbit(allComments);
       if (base.state === "missing" || base.state === "thinking" || base.state === "rate_limited") return base;
       const crUnresolved = pr.reviewThreads.nodes.filter((t) => {
+        if (t.isOutdated || t.isResolved) return false;
         const login = t.comments.nodes[0]?.author?.login;
-        return login && BOT_PATTERNS.coderabbit.test(login) && !t.isResolved;
+        return login && BOT_PATTERNS.coderabbit.test(login);
       }).length;
       return (crUnresolved > 0 ? { state: "open", count: crUnresolved } : { state: "clean" }) satisfies BotReviewState;
     })(),

@@ -13,7 +13,7 @@ export function BotBadge({ state }: { state: BotReviewState }) {
       return <span title="Generating...">{SPINNER}</span>;
     case "rate_limited":
       return (
-        <span title="Rate limited" className="inline-flex items-center gap-1 rounded-full bg-green-900 px-2 py-0.5 text-xs text-green-300">
+        <span title="Rate limited" className="inline-flex items-center gap-1 rounded-full bg-yellow-900 px-2 py-0.5 text-xs text-yellow-300">
           limit
         </span>
       );
