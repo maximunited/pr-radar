@@ -1,7 +1,8 @@
 import { graphql } from "@octokit/graphql";
-import type { AppConfig, CiJob, CiJobStatus, FetchResult, PeerComments, PullRequest, PrState, ReviewerBreakdown, ReviewerDetail } from "../types.js";
+import type { AppConfig, BotReviewState, CiJob, CiJobStatus, FetchResult, PeerComments, PullRequest, PrState, ReviewerBreakdown, ReviewerDetail } from "../types.js";
 import { matchesAny } from "./patterns.js";
 import { parseCodeRabbit, parseQodo, isIgnoredBot } from "./bots.js";
+import { BOT_PATTERNS } from "../config/default.js";
 
 const PR_QUERY = `
   query RepoPRs($searchQuery: String!, $cursor: String) {
@@ -241,7 +242,17 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
     ciJobs,
     e2eJob,
     qodo: parseQodo(allComments),
-    coderabbit: parseCodeRabbit(allComments),
+    coderabbit: (() => {
+      // Use CR's comment/review body only for missing/thinking/rate_limited detection.
+      // For open vs clean, count actual unresolved inline threads from CR — not checkbox heuristics.
+      const base = parseCodeRabbit(allComments);
+      if (base.state === "missing" || base.state === "thinking" || base.state === "rate_limited") return base;
+      const crUnresolved = pr.reviewThreads.nodes.filter((t) => {
+        const login = t.comments.nodes[0]?.author?.login;
+        return login && BOT_PATTERNS.coderabbit.test(login) && !t.isResolved;
+      }).length;
+      return (crUnresolved > 0 ? { state: "open", count: crUnresolved } : { state: "clean" }) satisfies BotReviewState;
+    })(),
     peerComments,
     reviewers: reviewerBreakdown,
   };
