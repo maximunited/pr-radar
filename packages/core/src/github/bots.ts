@@ -9,13 +9,16 @@ import {
 
 export type RawComment = { body: string; user: { login: string } | null };
 
+// Max body length for a "still thinking" placeholder — real reviews are much longer
+const THINKING_MAX_BODY_LEN = 400;
+
 function classifyBotComment(
   body: string,
   thinkingPatterns: RegExp[],
   rateLimitPatterns: RegExp[],
 ): "thinking" | "rate_limited" | "has_content" {
   if (rateLimitPatterns.some((p) => p.test(body))) return "rate_limited";
-  if (thinkingPatterns.some((p) => p.test(body))) return "thinking";
+  if (body.length < THINKING_MAX_BODY_LEN && thinkingPatterns.some((p) => p.test(body))) return "thinking";
   return "has_content";
 }
 
