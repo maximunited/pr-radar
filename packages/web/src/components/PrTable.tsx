@@ -248,6 +248,28 @@ const COLUMNS = [
 
 const DEFAULT_AUTHORS = ["maximunited", "ugreener", "gamado"];
 
+function useLocalStorage<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? (JSON.parse(stored) as T) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+  const setAndStore = useCallback(
+    (updater: T | ((prev: T) => T)) => {
+      setValue((prev) => {
+        const next = typeof updater === "function" ? (updater as (prev: T) => T)(prev) : updater;
+        try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* quota or SSR */ }
+        return next;
+      });
+    },
+    [key],
+  );
+  return [value, setAndStore];
+}
+
 type SmartFilter = "all" | "needs_attention" | "ready_to_merge";
 
 function applySmartFilter(prs: PullRequest[], filter: SmartFilter): PullRequest[] {
@@ -293,11 +315,11 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [stateFilter, setStateFilter] = useState<PrState | "all">("open");
-  const [repoFilter, setRepoFilter] = useState<string[]>(DEFAULT_REPO_FILTER);
+  const [repoFilter, setRepoFilter] = useLocalStorage<string[]>("pr-radar:repoFilter", DEFAULT_REPO_FILTER);
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
   const [repoInput, setRepoInput] = useState("");
   const repoDropdownRef = useRef<HTMLDivElement>(null);
-  const [authorFilter, setAuthorFilter] = useState<string[]>(DEFAULT_AUTHORS);
+  const [authorFilter, setAuthorFilter] = useLocalStorage<string[]>("pr-radar:authorFilter", DEFAULT_AUTHORS);
   const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
   const [authorInput, setAuthorInput] = useState("");
   const authorDropdownRef = useRef<HTMLDivElement>(null);
