@@ -230,10 +230,11 @@ const COLUMNS = [
     cell: (i) => {
       const active = i.getValue();
       const removed = i.row.original.removedLabels;
+      const addedBy = i.row.original.labelAddedBy;
       return (
         <span className="flex flex-wrap gap-0.5">
           {active.map((l) => (
-            <span key={l} className={clsx("rounded px-1 text-xs", labelClasses(l))}>{l}</span>
+            <span key={l} title={addedBy[l] ? `Added by ${addedBy[l]}` : undefined} className={clsx("rounded px-1 text-xs", labelClasses(l))}>{l}</span>
           ))}
           {removed.map((l) => (
             <span key={`rm-${l}`} title="Label was removed" className={clsx("rounded px-1 text-xs line-through", removedLabelClasses(l))}>{l}</span>
