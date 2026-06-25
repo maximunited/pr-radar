@@ -315,7 +315,9 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
-  const [stateFilter, setStateFilter] = useState<PrState | "all">("open");
+  const [stateFilter, setStateFilter] = useState<PrState[]>(["open"]);
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
+  const stateDropdownRef = useRef<HTMLDivElement>(null);
   const [repoFilter, setRepoFilter] = useLocalStorage<string[]>("pr-radar:repoFilter", DEFAULT_REPO_FILTER);
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
   const [repoInput, setRepoInput] = useState("");
@@ -328,6 +330,9 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
+      if (stateDropdownRef.current && !stateDropdownRef.current.contains(e.target as Node)) {
+        setStateDropdownOpen(false);
+      }
       if (authorDropdownRef.current && !authorDropdownRef.current.contains(e.target as Node)) {
         setAuthorDropdownOpen(false);
       }
@@ -376,7 +381,7 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
 
   const filtered = useMemo(() => {
     let prs = allPrs;
-    if (stateFilter !== "all") prs = prs.filter((p) => p.state === stateFilter);
+    if (stateFilter.length > 0) prs = prs.filter((p) => stateFilter.includes(p.state));
     if (repoFilter.length > 0) prs = prs.filter((p) => repoFilter.includes(p.repo));
     if (authorFilter.length > 0) prs = prs.filter((p) => authorFilter.includes(p.author));
     return applySmartFilter(prs, smartFilter);
@@ -415,17 +420,47 @@ export function PrTable({ results, onRefresh, refreshing, fetchedAuthors, loadin
           ))}
         </div>
 
-        {/* State filter */}
-        <select
-          value={stateFilter}
-          onChange={(e) => setStateFilter(e.target.value as PrState | "all")}
-          className="rounded bg-gray-800 px-2 py-1 text-xs text-gray-300"
-        >
-          <option value="all">All states</option>
-          <option value="open">Open</option>
-          <option value="draft">Draft</option>
-          <option value="closed">Closed</option>
-        </select>
+        {/* State multi-select */}
+        <div className="relative" ref={stateDropdownRef}>
+          <button
+            onClick={() => setStateDropdownOpen((o) => !o)}
+            className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+          >
+            States
+            <span className="rounded-full bg-blue-700 px-1 text-white">
+              {stateFilter.length === 0 ? "all" : stateFilter.length}
+            </span>
+          </button>
+          {stateDropdownOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 min-w-[130px] rounded-lg border border-gray-700 bg-gray-900 py-1 shadow-xl">
+              <button
+                onClick={() => setStateFilter([])}
+                className="w-full px-3 py-1 text-left text-xs text-gray-500 hover:text-gray-300"
+              >
+                Show all
+              </button>
+              <div className="my-1 border-t border-gray-800" />
+              {(["open", "draft", "closed"] as PrState[]).map((s) => {
+                const selected = stateFilter.includes(s);
+                return (
+                  <label key={s} className="flex cursor-pointer items-center gap-2 px-3 py-1 hover:bg-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        setStateFilter((prev) =>
+                          selected ? prev.filter((x) => x !== s) : [...prev, s],
+                        )
+                      }
+                      className="accent-blue-500"
+                    />
+                    <span className={clsx("text-xs capitalize", selected ? "text-white" : "text-gray-500")}>{s}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Repo multi-select */}
         <div className="relative" ref={repoDropdownRef}>
