@@ -59,7 +59,7 @@ const PR_QUERY = `
             nodes {
               isResolved
               isOutdated
-              comments(first: 1) {
+              comments(first: 20) {
                 nodes { author { login } }
               }
             }
@@ -189,8 +189,12 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
     const login = t.comments.nodes[0]?.author?.login;
     return login && !isIgnoredBot(login);
   });
-  // Unreplied regular (non-inline) comments: meaningful human comments since the author last replied
+  const unresolvedHuman = humanThreads.filter((t) => !t.isResolved);
   const prAuthorLogin = pr.author?.login ?? "";
+  const allReplied = unresolvedHuman.length > 0 && unresolvedHuman.every(
+    (t) => t.comments.nodes.some((c) => c.author?.login === prAuthorLogin),
+  );
+  // Unreplied regular (non-inline) comments: meaningful human comments since the author last replied
   const humanIssueComments = pr.comments.nodes
     .filter((c) => c.author?.login && !isIgnoredBot(c.author.login))
     .map((c) => ({ login: c.author!.login, body: c.body, ts: new Date(c.createdAt).getTime() }));
@@ -201,9 +205,10 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
   ).length;
 
   const peerComments: PeerComments = {
-    unresolved: humanThreads.filter((t) => !t.isResolved).length,
+    unresolved: unresolvedHuman.length,
     total: humanThreads.length,
     unrepliedComments,
+    allReplied,
   };
 
   // Reviewers — COMMENTED doesn't clear a prior APPROVED/CHANGES_REQUESTED
@@ -272,8 +277,6 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
     e2eJob,
     qodo: parseQodo(allComments),
     coderabbit: (() => {
-      // Use CR's comment/review body only for missing/thinking/rate_limited detection.
-      // For open vs clean, count actual unresolved inline threads from CR — not checkbox heuristics.
       const base = parseCodeRabbit(allComments);
       if (base.state === "missing" || base.state === "thinking" || base.state === "rate_limited") return base;
       const crUnresolved = pr.reviewThreads.nodes.filter((t) => {

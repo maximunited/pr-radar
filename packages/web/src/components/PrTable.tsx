@@ -83,8 +83,8 @@ const COLUMN_TIPS: Record<string, string> = {
   ciJobs:       "Default CI checks (lint, unit, build, etc). Each dot = one job. Green=pass, red=fail, yellow=pending",
   e2eJob:       "Periodic pj-rehearse / e2e job. Matched by name pattern (e.g. pj-rehearse*)",
   qodo:         "Qodo AI review status. Green=clean or rate-limited, red=open action items, spinner=still generating",
-  coderabbit:   "CodeRabbit review status. Same states as Qodo",
-  peerComments: "Human comments: N💬 = unreplied regular comments (no /commands), N/N = unresolved/total inline review threads. Bots excluded.",
+  coderabbit:   "CodeRabbit unresolved review comments. Red count = unresolved threads, green = all resolved",
+  peerComments: "Human comments: N💬 = unreplied regular comments (no /commands), N/N = unresolved/total inline review threads. Green = author replied to all. Bots excluded.",
   reviewers:    "Review decisions: ✓=approvals, ✗=changes requested",
   commits:      "Number of commits in the PR",
   labels:       "GitHub labels on the PR",
@@ -177,15 +177,17 @@ const COLUMNS = [
   col.accessor("peerComments", {
     header: "Comments",
     cell: (i) => {
-      const { unresolved, total, unrepliedComments } = i.getValue();
+      const { unresolved, total, unrepliedComments, allReplied } = i.getValue();
       const hasAny = unresolved > 0 || unrepliedComments > 0;
+      const color = allReplied && !unrepliedComments ? "text-green-400" : hasAny ? "text-yellow-400" : "text-gray-500";
       const parts: string[] = [];
       if (unrepliedComments > 0) parts.push(`${unrepliedComments} unreplied`);
       if (total > 0) parts.push(`${unresolved}/${total} inline unresolved`);
+      if (allReplied) parts.push("author replied to all inline threads");
       return (
         <span
           title={parts.length > 0 ? parts.join(", ") : "No open comments"}
-          className={hasAny ? "text-yellow-400" : "text-gray-500"}
+          className={color}
         >
           {unrepliedComments > 0 && <span>{unrepliedComments}💬</span>}
           {total > 0 && (

@@ -61,6 +61,10 @@ export function parseQodo(comments: RawComment[]): BotReviewState {
   return parseBotByPattern(comments, BOT_PATTERNS.qodo, QODO_THINKING_PATTERNS, QODO_RATE_LIMIT_PATTERNS);
 }
 
+export function isCodeRabbitBot(login: string): boolean {
+  return BOT_PATTERNS.coderabbit.test(login);
+}
+
 export function parseCodeRabbit(comments: RawComment[]): BotReviewState {
   return parseBotByPattern(comments, BOT_PATTERNS.coderabbit, CODERABBIT_THINKING_PATTERNS, CODERABBIT_RATE_LIMIT_PATTERNS);
 }
