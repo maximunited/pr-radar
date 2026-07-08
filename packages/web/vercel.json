@@ -1,1 +1,7 @@
-{}
+{
+  "git": {
+    "deploymentEnabled": {
+      "release-please--branches--main": false
+    }
+  }
+}

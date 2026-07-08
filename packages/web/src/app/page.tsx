@@ -10,7 +10,7 @@ const DEFAULT_REPOS = [
   "openshift/release",
   "medik8s/storage-based-remediation",
 ];
-const POLL_MS = 5 * 60 * 1000;
+const POLL_MS = 15 * 60 * 1000;
 
 export default function Home() {
   const [results, setResults] = useState<FetchResult[]>([]);

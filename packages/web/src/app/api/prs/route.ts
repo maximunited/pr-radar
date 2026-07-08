@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { getCached, setCached, fetchRepoPRs, DEFAULT_CONFIG, DEFAULT_AUTHORS } from "@pr-radar/core";
+import { getCached, setCached, isRevalidating, markRevalidating, fetchRepoPRs, DEFAULT_CONFIG, DEFAULT_AUTHORS } from "@pr-radar/core";
 import type { FetchResult } from "@pr-radar/core";
 
 export const runtime = "nodejs";
@@ -54,8 +54,17 @@ export async function GET(req: Request) {
       const perAuthor = await Promise.all(
         authors.map(async (author) => {
           if (!forceRefresh) {
-            const cached = await getCached(repoConfig.repo, author);
-            if (cached) return cached;
+            const { data, stale } = await getCached(repoConfig.repo, author);
+            if (data && !stale) return data;
+            if (data && stale && !isRevalidating(repoConfig.repo, author)) {
+              markRevalidating(repoConfig.repo, author, true);
+              fetchRepoPRs(token, repoConfig, author)
+                .then((fresh) => setCached(fresh, DEFAULT_CONFIG.cacheTtl, author))
+                .catch(() => {})
+                .finally(() => markRevalidating(repoConfig.repo, author, false));
+              return data;
+            }
+            if (data) return data;
           }
           const result = await fetchRepoPRs(token, repoConfig, author);
           await setCached(result, DEFAULT_CONFIG.cacheTtl, author);
