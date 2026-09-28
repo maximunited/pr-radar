@@ -13,7 +13,7 @@
   "dependencies": {
     "@octokit/graphql": "^8.1.1",
     "@octokit/rest": "^21.0.2",
-    "@upstash/redis": "^1.38.4",
+    "@upstash/redis": "^1.39.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
