@@ -39,3 +39,6 @@ desktop.ini
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# CodeGraph local database and SQLite sidecar files
+/.codegraph/codegraph.db*
