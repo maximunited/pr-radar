@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.39.7",
+    "@clerk/nextjs": "^6.39.8",
     "@octokit/rest": "^21.0.2",
     "@pr-radar/core": "workspace:*",
     "@upstash/redis": "^1.39.0",
