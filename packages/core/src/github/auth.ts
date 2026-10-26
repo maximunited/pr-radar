@@ -1,12 +1,17 @@
 import { execSync } from "node:child_process";
 
-export function resolveGitHubToken(): string | null {
+export function resolveGitHubToken(
+  exec: (command: string, options?: unknown) => string = execSync as (
+    command: string,
+    options?: unknown,
+  ) => string,
+): string | null {
   // 1. Env var
   if (process.env["GITHUB_TOKEN"]) return process.env["GITHUB_TOKEN"];
 
   // 2. gh CLI passthrough
   try {
-    const token = execSync("gh auth token", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const token = exec("gh auth token", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
     if (token) return token;
   } catch {
     // gh not installed or not authenticated

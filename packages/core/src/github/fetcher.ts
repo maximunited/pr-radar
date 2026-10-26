@@ -157,7 +157,7 @@ function contextToJob(node: GhContext): { name: string; status: CiJobStatus; url
   return { name: node.context, status: mapStatusContextState(node.state), url: node.targetUrl };
 }
 
-function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][number]): PullRequest {
+export function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][number]): PullRequest {
   const state: PrState = pr.isDraft ? "draft" : pr.state === "OPEN" ? "open" : "closed";
 
   // CI jobs from status check rollup (handles both CheckRun and StatusContext)
@@ -293,18 +293,27 @@ function parsePR(pr: GhPR, repoName: string, repoConfig: AppConfig["repos"][numb
 
 type QueryResult = { search: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: Array<GhPR | Record<string, never>> } };
 
+export interface FetchRepoPRsOptions {
+  author?: string; // when omitted, fetches PRs across all authors
+  graphqlClient?: typeof graphql; // injected for testing
+}
+
 export async function fetchRepoPRs(
   token: string,
   repoConfig: AppConfig["repos"][number],
-  author: string,
+  options: FetchRepoPRsOptions = {},
 ): Promise<FetchResult> {
-  const client = graphql.defaults({ headers: { authorization: `token ${token}` } });
-  const searchQuery = `is:pr repo:${repoConfig.repo} author:${author}`;
+  const client = (options.graphqlClient ?? graphql).defaults({
+    headers: { authorization: `token ${token}` },
+  });
+  const searchQuery = options.author
+    ? `is:pr repo:${repoConfig.repo} author:${options.author}`
+    : `is:pr repo:${repoConfig.repo}`;
 
   const prs: PullRequest[] = [];
   let cursor: string | null = null;
   let pages = 0;
-  const MAX_PAGES = 4; // cap at 200 PRs per author
+  const MAX_PAGES = 4; // cap at 200 PRs per query
 
   do {
     const data: QueryResult = await client<QueryResult>(PR_QUERY, { searchQuery, cursor });
@@ -318,7 +327,13 @@ export async function fetchRepoPRs(
     pages++;
   } while (cursor && pages < MAX_PAGES);
 
-  return { prs, fetchedAt: new Date().toISOString(), repo: repoConfig.repo, author };
+  const result: FetchResult = {
+    prs,
+    fetchedAt: new Date().toISOString(),
+    repo: repoConfig.repo,
+  };
+  if (options.author !== undefined) result.author = options.author;
+  return result;
 }
 
 export async function fetchRepoPRsForAuthors(
@@ -326,7 +341,7 @@ export async function fetchRepoPRsForAuthors(
   repoConfig: AppConfig["repos"][number],
   authors: string[],
 ): Promise<FetchResult> {
-  const results = await Promise.all(authors.map((a) => fetchRepoPRs(token, repoConfig, a)));
+  const results = await Promise.all(authors.map((a) => fetchRepoPRs(token, repoConfig, { author: a })));
   const merged = results.flatMap((r) => r.prs);
   return { prs: merged, fetchedAt: new Date().toISOString(), repo: repoConfig.repo };
 }

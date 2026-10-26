@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { Octokit } from "@octokit/rest";
 import Table from "cli-table3";
 import {
   DEFAULT_CONFIG,
@@ -19,11 +18,9 @@ if (!token) {
   process.exit(1);
 }
 
-const octokit = new Octokit({ auth: token });
-
 console.log(`Fetching PRs for: ${config.repos.map((r) => r.repo).join(", ")}…\n`);
 
-const results = await Promise.all(config.repos.map((r) => fetchRepoPRs(octokit, r)));
+const results = await Promise.all(config.repos.map((r) => fetchRepoPRs(token, r)));
 const prs: PullRequest[] = results.flatMap((r) => r.prs);
 
 function botLabel(state: BotReviewState): string {
