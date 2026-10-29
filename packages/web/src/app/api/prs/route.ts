@@ -58,7 +58,7 @@ export async function GET(req: Request) {
             if (data && !stale) return data;
             if (data && stale && !isRevalidating(repoConfig.repo, author)) {
               markRevalidating(repoConfig.repo, author, true);
-              fetchRepoPRs(token, repoConfig, author)
+              fetchRepoPRs(token, repoConfig, { author })
                 .then((fresh) => setCached(fresh, DEFAULT_CONFIG.cacheTtl, author))
                 .catch(() => {})
                 .finally(() => markRevalidating(repoConfig.repo, author, false));
@@ -66,7 +66,7 @@ export async function GET(req: Request) {
             }
             if (data) return data;
           }
-          const result = await fetchRepoPRs(token, repoConfig, author);
+          const result = await fetchRepoPRs(token, repoConfig, { author });
           await setCached(result, DEFAULT_CONFIG.cacheTtl, author);
           return result;
         }),

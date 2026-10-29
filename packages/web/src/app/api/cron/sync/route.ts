@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   await Promise.all(
     DEFAULT_CONFIG.repos.flatMap((repoConfig) =>
       DEFAULT_AUTHORS.map(async (author) => {
-        const result = await fetchRepoPRs(token, repoConfig, author);
+        const result = await fetchRepoPRs(token, repoConfig, { author });
         await setCached(result, DEFAULT_CONFIG.cacheTtl, author);
       }),
     ),
